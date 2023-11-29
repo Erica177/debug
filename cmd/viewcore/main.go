@@ -501,6 +501,12 @@ func runHistogram(cmd *cobra.Command, args []string) {
 		b.count++
 		return true
 	})
+
+	var total int64
+	for _, b := range buckets {
+		total = total + b.count*b.size
+	}
+
 	if len(args) == 1 {
 		switch args[0] {
 		case "count":
@@ -527,6 +533,7 @@ func runHistogram(cmd *cobra.Command, args []string) {
 		buckets = buckets[:topN]
 	}
 
+	fmt.Printf("Total heap memory usage : %s\n", util.FormatBytes(total))
 	t := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.AlignRight)
 	fmt.Fprintf(t, "%s\t%s\t%s\t %s\n", "Count", "Size", "Total", "Type")
 	for _, e := range buckets {
