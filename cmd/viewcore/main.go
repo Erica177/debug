@@ -111,6 +111,15 @@ var (
 		Run:   runObjects,
 	}
 
+	cmdSearchObjects = &cobra.Command{
+		Use: "search",
+		Short: "search all address by objects type, multiple types use blank separate," +
+			" if want all address without omit, use search [type] all," +
+			" this way only support one type",
+		Args: cobra.ArbitraryArgs,
+		Run:  runSearchObjectAddressByTypeName,
+	}
+
 	cmdObjgraph = &cobra.Command{
 		Use:   "objgraph <output_filename>",
 		Short: "dump object graph (dot)",
@@ -119,7 +128,7 @@ var (
 	}
 
 	cmdReachable = &cobra.Command{
-		Use:   "reachable <address>",
+		Use:   "reach <address>",
 		Short: "find path from root to an object",
 		Args:  cobra.ExactArgs(1),
 		Run:   runReachable,
@@ -174,7 +183,8 @@ func init() {
 		cmdObjgraph,
 		cmdReachable,
 		cmdHTML,
-		cmdRead)
+		cmdRead,
+		cmdSearchObjects)
 
 	// customize the usage template - viewcore's command structure
 	// is not typical of cobra-based command line tool.
@@ -615,6 +625,42 @@ func runObjects(cmd *cobra.Command, args []string) {
 
 }
 
+func runSearchObjectAddressByTypeName(cmd *cobra.Command, args []string) {
+	_, c, err := readCore()
+	if err != nil {
+		exitf("%v\n", err)
+	}
+
+	objMap := map[string][]core.Address{}
+	c.ForEachObject(func(x gocore.Object) bool {
+		objMap[typeName(c, x)] = append(objMap[typeName(c, x)], c.Addr(x))
+		return true
+	})
+
+	fmt.Printf("Type\tAddresses\n")
+	if len(args) == 2 && args[1] == "all" {
+		var address []string
+		for _, addr := range objMap[args[0]] {
+			address = append(address, fmt.Sprintf("%x", addr))
+		}
+		fmt.Printf("%s\t%s\n", args[0], address)
+		return
+	}
+
+	for _, name := range args {
+		numbersOfAllAddress := len(objMap[name])
+		if numbersOfAllAddress > 3 {
+			fmt.Printf("%s\t%x,%x,%x and more %v address...\n", name, objMap[name][0], objMap[name][1], objMap[name][2], numbersOfAllAddress-3)
+		} else {
+			var address []string
+			for _, addr := range objMap[name] {
+				address = append(address, fmt.Sprintf("%x", addr))
+			}
+			fmt.Printf("%s\t%v\n", name, address)
+		}
+	}
+}
+
 func runReachable(cmd *cobra.Command, args []string) {
 	_, c, err := readCore()
 	if err != nil {
@@ -622,12 +668,12 @@ func runReachable(cmd *cobra.Command, args []string) {
 	}
 	n, err := strconv.ParseInt(args[0], 16, 64)
 	if err != nil {
-		exitf("can't parse %q as an object address\n", args[1])
+		exitf("can't parse %q as an object address\n", args[0])
 	}
 	a := core.Address(n)
 	obj, _ := c.FindObject(a)
 	if obj == 0 {
-		exitf("can't find object at address %s\n", args[1])
+		exitf("can't find object at address %s\n", args[0])
 	}
 
 	// Breadth-first search backwards until we reach a root.
@@ -770,6 +816,9 @@ func typeName(c *gocore.Process, x gocore.Object) string {
 		return fmt.Sprintf("unk%d", size)
 	}
 	name := typ.String()
+	if typ.Size == 0 {
+		return fmt.Sprintf("%s-size0", name)
+	}
 	n := size / typ.Size
 	if n > 1 {
 		if repeat < n {
