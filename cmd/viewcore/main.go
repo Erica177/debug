@@ -29,6 +29,7 @@ import (
 	"github.com/spf13/pflag"
 	"golang.org/x/debug/internal/core"
 	"golang.org/x/debug/internal/gocore"
+	"golang.org/x/debug/internal/util"
 )
 
 // Top-level command.
@@ -92,8 +93,9 @@ var (
 		Short:   "print histogram of heap memory use by Go type",
 		Long: "print histogram of heap memory use by Go type.\n" +
 			"If N is specified, it will reports only the top N buckets\n" +
-			"based on the total bytes.",
-		Args: cobra.ExactArgs(0),
+			"based on the total bytes. it sorted by total heap usage default\n" +
+			"use 'count' or 'size' sort by other metric",
+		Args: cobra.MaximumNArgs(1),
 		Run:  runHistogram,
 	}
 
@@ -499,9 +501,26 @@ func runHistogram(cmd *cobra.Command, args []string) {
 		b.count++
 		return true
 	})
-	sort.Slice(buckets, func(i, j int) bool {
-		return buckets[i].size*buckets[i].count > buckets[j].size*buckets[j].count
-	})
+	if len(args) == 1 {
+		switch args[0] {
+		case "count":
+			sort.Slice(buckets, func(i, j int) bool {
+				return buckets[i].count > buckets[j].count
+			})
+		case "size":
+			sort.Slice(buckets, func(i, j int) bool {
+				return buckets[i].size > buckets[j].size
+			})
+		default:
+			sort.Slice(buckets, func(i, j int) bool {
+				return buckets[i].size*buckets[i].count > buckets[j].size*buckets[j].count
+			})
+		}
+	} else {
+		sort.Slice(buckets, func(i, j int) bool {
+			return buckets[i].size*buckets[i].count > buckets[j].size*buckets[j].count
+		})
+	}
 
 	// report only top N if requested
 	if topN > 0 && len(buckets) > topN {
@@ -509,9 +528,9 @@ func runHistogram(cmd *cobra.Command, args []string) {
 	}
 
 	t := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.AlignRight)
-	fmt.Fprintf(t, "%s\t%s\t%s\t %s\n", "count", "size", "bytes", "type")
+	fmt.Fprintf(t, "%s\t%s\t%s\t %s\n", "Count", "Size", "Total", "Type")
 	for _, e := range buckets {
-		fmt.Fprintf(t, "%d\t%d\t%d\t %s\n", e.count, e.size, e.count*e.size, e.name)
+		fmt.Fprintf(t, "%d\t%s\t%s\t %s\n", e.count, util.FormatBytes(e.size), util.FormatBytes(e.count*e.size), e.name)
 	}
 	t.Flush()
 }
