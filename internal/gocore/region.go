@@ -4,7 +4,11 @@
 
 package gocore
 
-import "golang.org/x/debug/internal/core"
+import (
+	"fmt"
+
+	"golang.org/x/debug/internal/core"
+)
 
 // A region is a piece of the virtual address space of the inferior.
 // It has an address and a type.
@@ -118,6 +122,7 @@ func (r region) String() string {
 	}
 	p := r.p.proc.ReadPtr(r.a)
 	n := r.p.proc.ReadUintptr(r.a.Add(r.p.proc.PtrSize()))
+	fmt.Println(fmt.Sprintf("byte len %v", n))
 	b := make([]byte, n)
 	r.p.proc.ReadAt(b, p)
 	return string(b)
