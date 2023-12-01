@@ -792,7 +792,8 @@ func runReachable(cmd *cobra.Command, args []string) {
 	done := false
 	for !done {
 		if len(q) == 0 {
-			continue
+			fmt.Printf("can't find a root that can reach the object")
+			return
 		}
 		y := q[0]
 		q = q[1:]
@@ -1050,8 +1051,7 @@ func reachObjectsByAddress(c *gocore.Process, addr []core.Address) []string {
 		info := ""
 		for !done {
 			if len(q) == 0 {
-				fmt.Printf("can't find a root that can reach the object, %x\n", address)
-				return nil
+				continue
 			}
 			y := q[0]
 			q = q[1:]
