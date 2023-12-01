@@ -136,7 +136,7 @@ var (
 	}
 
 	cmdReachAll = &cobra.Command{
-		Use: "reachall <objects>",
+		Use: "reachall <object_type>",
 		Short: "[NEW] find path from root to an object all address, filter by key[flags]" +
 			fmt.Sprintf("and output top len[flags] stack info, default length 10"),
 		Args: cobra.ExactArgs(1),
