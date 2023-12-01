@@ -753,7 +753,7 @@ func runReachAll(cmd *cobra.Command, args []string) {
 			if strings.Contains(info, keywords) {
 				filters = append(filters, info)
 			}
-			if len(info) == outputLength {
+			if len(filters) == outputLength {
 				break
 			}
 		}
