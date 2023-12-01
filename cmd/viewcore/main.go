@@ -792,8 +792,7 @@ func runReachable(cmd *cobra.Command, args []string) {
 	done := false
 	for !done {
 		if len(q) == 0 {
-			fmt.Printf("can't find a root that can reach the object")
-			return
+			continue
 		}
 		y := q[0]
 		q = q[1:]
