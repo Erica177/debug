@@ -731,21 +731,34 @@ func runReachAll(cmd *cobra.Command, args []string) {
 	}
 
 	var allStack []string
-	if len(addrs) > outputLength {
+	if keywords == "" && len(addrs) > outputLength {
 		allStack = reachObjectsByAddress(c, addrs[:outputLength])
 	} else {
 		allStack = reachObjectsByAddress(c, addrs)
 	}
 	fmt.Printf("All stack info of Object type %s, Top[%v]\n", objectType, outputLength)
 	if keywords == "" {
-		for _, info := range allStack {
-			fmt.Printf("%s\n", info)
-		}
-	} else {
-		for _, info := range allStack {
-			if strings.Contains(info, keywords) {
+		if len(allStack) > outputLength {
+			for _, info := range allStack[:outputLength] {
 				fmt.Printf("%s\n", info)
 			}
+		} else {
+			for _, info := range allStack {
+				fmt.Printf("%s\n", info)
+			}
+		}
+	} else {
+		var filters []string
+		for _, info := range allStack {
+			if strings.Contains(info, keywords) {
+				filters = append(filters, info)
+			}
+			if len(info) == outputLength {
+				break
+			}
+		}
+		for _, filter := range filters {
+			fmt.Printf("%s\n", filter)
 		}
 	}
 }
