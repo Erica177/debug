@@ -156,6 +156,13 @@ var (
 		Args:  cobra.RangeArgs(1, 2),
 		Run:   runRead,
 	}
+
+	cmdObjref = &cobra.Command{
+		Use:   "objref <output_filename>",
+		Short: "dump object reference in flame graph",
+		Args:  cobra.ExactArgs(1),
+		Run:   runObjref,
+	}
 )
 
 type config struct {
@@ -185,6 +192,9 @@ func init() {
 
 	cmdHistogram.Flags().Int("top", 0, "reports only top N entries if N>0")
 
+	cmdObjref.Flags().Float64("minwidth", 0.01, "omit smaller objects (default 0.01 pixels)")
+	cmdObjref.Flags().Bool("printaddr", false, "print object addresses (default false)")
+
 	cmdRoot.AddCommand(
 		cmdOverview,
 		cmdMappings,
@@ -197,7 +207,8 @@ func init() {
 		cmdHTML,
 		cmdRead,
 		cmdSearchObjects,
-		cmdReachAll)
+		cmdReachAll,
+		cmdObjref)
 
 	// customize the usage template - viewcore's command structure
 	// is not typical of cobra-based command line tool.
