@@ -136,6 +136,13 @@ var (
 		Run:   runReachable,
 	}
 
+	cmdReachAll = &cobra.Command{
+		Use:   "reachall <objects> [keywords]optional",
+		Short: "find path from root to an object all address, filter by keywords[optional]",
+		Args:  cobra.MaximumNArgs(2),
+		Run:   runReachAll,
+	}
+
 	cmdHTML = &cobra.Command{
 		Use:   "html",
 		Short: "start an http server for browsing core file data on the port specified with -port",
@@ -186,7 +193,8 @@ func init() {
 		cmdReachable,
 		cmdHTML,
 		cmdRead,
-		cmdSearchObjects)
+		cmdSearchObjects,
+		cmdReachAll)
 
 	// customize the usage template - viewcore's command structure
 	// is not typical of cobra-based command line tool.
@@ -687,6 +695,45 @@ func runSearchObjectAddressByTypeName(cmd *cobra.Command, args []string) {
 	}
 }
 
+func runReachAll(cmd *cobra.Command, args []string) {
+	objectType := args[0]
+	keywords := ""
+	if len(args) == 2 {
+		keywords = args[1]
+	}
+
+	_, c, err := readCore()
+	if err != nil {
+		exitf("%v\n", err)
+	}
+
+	objMap := map[string][]core.Address{}
+	c.ForEachObject(func(x gocore.Object) bool {
+		objMap[typeName(c, x)] = append(objMap[typeName(c, x)], c.Addr(x))
+		return true
+	})
+
+	addrs, ok := objMap[objectType]
+	if !ok {
+		fmt.Printf("can not find address for object type %s", objectType)
+		return
+	}
+
+	allStack := reachObjectsByAddress(c, addrs)
+	fmt.Printf("All stack info of Object type %s\n", objectType)
+	if keywords == "" {
+		for _, info := range allStack[:3] {
+			fmt.Printf("%s\n", info)
+		}
+	} else {
+		for _, info := range allStack {
+			if strings.Contains(info, keywords) {
+				fmt.Printf("%s\n", info)
+			}
+		}
+	}
+}
+
 func runReachable(cmd *cobra.Command, args []string) {
 	_, c, err := readCore()
 	if err != nil {
@@ -694,12 +741,14 @@ func runReachable(cmd *cobra.Command, args []string) {
 	}
 	n, err := strconv.ParseInt(args[0], 16, 64)
 	if err != nil {
-		exitf("can't parse %q as an object address\n", args[0])
+		fmt.Printf("can't parse %q as an object address\n", args[0])
+		return
 	}
 	a := core.Address(n)
 	obj, _ := c.FindObject(a)
 	if obj == 0 {
-		exitf("can't find object at address %s\n", args[0])
+		fmt.Printf("can't find object at address %s\n", args[0])
+		return
 	}
 
 	// Breadth-first search backwards until we reach a root.
@@ -714,7 +763,8 @@ func runReachable(cmd *cobra.Command, args []string) {
 	done := false
 	for !done {
 		if len(q) == 0 {
-			panic("can't find a root that can reach the object")
+			fmt.Printf("can't find a root that can reach the object")
+			return
 		}
 		y := q[0]
 		q = q[1:]
@@ -946,4 +996,89 @@ func endProfile() {
 func exitf(format string, args ...interface{}) {
 	fmt.Fprintf(os.Stderr, format, args...)
 	os.Exit(1)
+}
+
+func reachObjectsByAddress(c *gocore.Process, addr []core.Address) []string {
+	var allStackInfo []string
+
+	for _, address := range addr {
+		obj, _ := c.FindObject(address)
+		if obj == 0 {
+			fmt.Printf("can't find stack for address %x\n", address)
+			continue
+		}
+
+		// Breadth-first search backwards until we reach a root.
+		type hop struct {
+			i int64         // offset in "from" object (the key in the path map) where the pointer is
+			x gocore.Object // the "to" object
+			j int64         // the offset in the "to" object
+		}
+		depth := map[gocore.Object]int{}
+		depth[obj] = 0
+		q := []gocore.Object{obj}
+		done := false
+
+		info := ""
+		for !done {
+			if len(q) == 0 {
+				fmt.Printf("can't find a root that can reach the object")
+				continue
+			}
+			y := q[0]
+			q = q[1:]
+			c.ForEachReversePtr(y, func(x gocore.Object, r *gocore.Root, i, j int64) bool {
+				if r != nil {
+					// found it.
+					if r.Frame == nil {
+						// Print global
+						info = info + fmt.Sprintf("%s", r.Name)
+					} else {
+						// Print stack up to frame in question.
+						var frames []*gocore.Frame
+						for f := r.Frame.Parent(); f != nil; f = f.Parent() {
+							frames = append(frames, f)
+						}
+						for k := len(frames) - 1; k >= 0; k-- {
+							info = info + fmt.Sprintf("%s\n", frames[k].Func().Name())
+						}
+						// Print frame + variable in frame.
+						info = info + fmt.Sprintf("%s.%s", r.Frame.Func().Name(), r.Name)
+					}
+					info = info + fmt.Sprintf("%s → \n", typeFieldName(r.Type, i))
+
+					z := y
+					for {
+						info = info + fmt.Sprintf("%x %s", c.Addr(z), typeName(c, z))
+						if z == obj {
+							info = info + fmt.Sprintf("\n")
+							break
+						}
+						// Find an edge out of z which goes to an object
+						// closer to obj.
+						c.ForEachPtr(z, func(i int64, w gocore.Object, j int64) bool {
+							if d, ok := depth[w]; ok && d < depth[z] {
+								info = info + fmt.Sprintf(" %s → %s", objField(c, z, i), objRegion(c, w, j))
+								z = w
+								return false
+							}
+							return true
+						})
+						info = info + fmt.Sprintf("\n")
+					}
+					done = true
+					return false
+				}
+				if _, ok := depth[x]; ok {
+					// we already found a shorter path to this object.
+					return true
+				}
+				depth[x] = depth[y] + 1
+				q = append(q, x)
+				return true
+			})
+		}
+		allStackInfo = append(allStackInfo, info)
+	}
+	return allStackInfo
 }
