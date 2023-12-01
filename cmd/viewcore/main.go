@@ -32,10 +32,6 @@ import (
 	"golang.org/x/debug/internal/util"
 )
 
-var (
-	maxOutputInfoLength = 10
-)
-
 // Top-level command.
 var cmdRoot = &cobra.Command{
 	Use:   "viewcore <corefile>",
@@ -118,10 +114,10 @@ var (
 	}
 
 	cmdSearchObjects = &cobra.Command{
-		Use: "search <object_type> [length]optional",
-		Short: "[NEW] search all address by objects type, and output top length[optional] address" +
-			fmt.Sprintf(", default length %v", maxOutputInfoLength),
-		Args: cobra.RangeArgs(1, 2),
+		Use: "search <object_type> --len[optional]",
+		Short: "[NEW] search all address by objects type, and output top len[optional] address" +
+			fmt.Sprintf(", default length 10"),
+		Args: cobra.ExactArgs(1),
 		Run:  runSearchObjectAddressByTypeName,
 	}
 
@@ -140,10 +136,10 @@ var (
 	}
 
 	cmdReachAll = &cobra.Command{
-		Use: "reachall <objects> [keywords]optional [length]optional",
-		Short: "[NEW] find path from root to an object all address, filter by keywords[optional]" +
-			fmt.Sprintf("and output top length[optional] stack info, default length %v", maxOutputInfoLength),
-		Args: cobra.RangeArgs(1, 3),
+		Use: "reachall <objects> --key[optional] --len[optional]",
+		Short: "[NEW] find path from root to an object all address, filter by key[optional]" +
+			fmt.Sprintf("and output top len[optional] stack info, default length 10"),
+		Args: cobra.ExactArgs(1),
 		Run:  runReachAll,
 	}
 
@@ -181,6 +177,9 @@ func init() {
 	cmdRoot.PersistentFlags().StringVar(&cfg.exePath, "exe", "", "main executable file")
 	cmdRoot.PersistentFlags().StringVar(&cfg.cpuprof, "prof", "", "write cpu profile of viewcore to this file for viewcore's developers")
 
+	cmdSearchObjects.Flags().Int("len", 10, "max length of output info")
+	cmdReachAll.Flags().Int("len", 10, "max length of output info")
+	cmdReachAll.Flags().String("key", "", "filter stack info search results by keywords")
 	// subcommand flags
 	cmdHTML.Flags().IntP("port", "p", 8080, "port for http server")
 
@@ -676,16 +675,10 @@ func runSearchObjectAddressByTypeName(cmd *cobra.Command, args []string) {
 	})
 
 	name := args[0]
-	var outputLength int
-	if len(args) == 2 {
-		parse, err := strconv.ParseInt(args[1], 10, 32)
-		if err != nil {
-			fmt.Printf("%v", err)
-			return
-		}
-		outputLength = int(parse)
-	} else {
-		outputLength = maxOutputInfoLength
+	outputLength, err := cmd.Flags().GetInt("len")
+	if err != nil {
+		fmt.Printf("%v", err)
+		return
 	}
 
 	fmt.Printf("Type\tAddresses, Top[%v]\n", outputLength)
@@ -708,21 +701,16 @@ func runSearchObjectAddressByTypeName(cmd *cobra.Command, args []string) {
 
 func runReachAll(cmd *cobra.Command, args []string) {
 	objectType := args[0]
-	keywords := ""
-	if len(args) >= 2 {
-		keywords = args[1]
-	}
 
-	var outputLength int
-	if len(args) == 3 {
-		parse, err := strconv.ParseInt(args[2], 10, 32)
-		if err != nil {
-			fmt.Printf("%v", err)
-			return
-		}
-		outputLength = int(parse)
-	} else {
-		outputLength = maxOutputInfoLength
+	keywords, err := cmd.Flags().GetString("key")
+	if err != nil {
+		fmt.Printf("%v", err)
+		return
+	}
+	outputLength, err := cmd.Flags().GetInt("len")
+	if err != nil {
+		fmt.Printf("%v", err)
+		return
 	}
 
 	_, c, err := readCore()
@@ -743,21 +731,15 @@ func runReachAll(cmd *cobra.Command, args []string) {
 	}
 
 	var allStack []string
-	if keywords == "" && len(addrs) > outputLength {
+	if len(addrs) > outputLength {
 		allStack = reachObjectsByAddress(c, addrs[:outputLength])
 	} else {
 		allStack = reachObjectsByAddress(c, addrs)
 	}
 	fmt.Printf("All stack info of Object type %s, Top[%v]\n", objectType, outputLength)
 	if keywords == "" {
-		if len(allStack) > outputLength {
-			for _, info := range allStack[:outputLength] {
-				fmt.Printf("%s\n", info)
-			}
-		} else {
-			for _, info := range allStack {
-				fmt.Printf("%s\n", info)
-			}
+		for _, info := range allStack {
+			fmt.Printf("%s\n", info)
 		}
 	} else {
 		for _, info := range allStack {
