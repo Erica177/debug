@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/debug/internal/core"
 	"golang.org/x/debug/internal/gocore"
+	"golang.org/x/debug/internal/util"
 )
 
 type ObjRef struct {
@@ -127,15 +128,18 @@ func addGoroutines(node *ObjNode) {
 func runObjref(cmd *cobra.Command, args []string) {
 	minWidth, err := cmd.Flags().GetFloat64("minwidth")
 	if err != nil {
-		exitf("%v\n", err)
+		fmt.Printf("%v\n", err)
+		return
 	}
 	printAddr, err := cmd.Flags().GetBool("printaddr")
 	if err != nil {
-		exitf("%v\n", err)
+		fmt.Printf("%v\n", err)
+		return
 	}
 	_, c, err := readCore()
 	if err != nil {
-		exitf("%v\n", err)
+		fmt.Printf("%v\n", err)
+		return
 	}
 
 	sumObjSize := int64(0)
@@ -149,7 +153,7 @@ func runObjref(cmd *cobra.Command, args []string) {
 		})
 		return true
 	})
-	fmt.Fprintf(os.Stderr, "sum object size %v\n", sumObjSize)
+	_, _ = fmt.Fprintf(os.Stderr, "Sum object size %v\n", util.FormatBytes(sumObjSize))
 
 	for _, r := range c.Globals() {
 		// size = 0, since global variable is not from heap
@@ -180,7 +184,7 @@ func runObjref(cmd *cobra.Command, args []string) {
 	for _, rNode := range rootObjNodes {
 		total += calcTreeSize(rNode)
 	}
-	fmt.Fprintf(os.Stderr, "total size %v\n", total)
+	_, _ = fmt.Fprintf(os.Stderr, "Total size %v\n", util.FormatBytes(total))
 
 	filename := args[0]
 	// Dump object graph to output file.
@@ -193,9 +197,9 @@ func runObjref(cmd *cobra.Command, args []string) {
 	for _, rNode := range rootObjNodes {
 		printedSize += printRefPath(w, path, total, rNode, minWidth, printAddr)
 	}
-	fmt.Fprintf(os.Stderr, "printed size: %v\n", printedSize)
+	_, _ = fmt.Fprintf(os.Stderr, "Printed size: %v\n", util.FormatBytes(printedSize))
 	w.Close()
-	fmt.Fprintf(os.Stderr, "wrote the object reference to %q\n", filename)
+	_, _ = fmt.Fprintf(os.Stderr, "Wrote the object reference to %q\n", filename)
 }
 
 func genRefPath(slice []string) string {
@@ -241,7 +245,7 @@ func printRefPath(w *os.File, path []string, total int64, node *ObjNode, minWidt
 		return printedSize
 	}
 	ref := genRefPath(path)
-	fmt.Fprintf(w, "%v\n\t%d\n", ref, node.size-printedSize)
+	_, _ = fmt.Fprintf(w, "%v\n\t%d\n", ref, node.size-printedSize)
 
 	return node.size
 }

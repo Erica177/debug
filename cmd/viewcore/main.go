@@ -159,7 +159,7 @@ var (
 
 	cmdObjref = &cobra.Command{
 		Use:   "objref <output_filename>",
-		Short: "dump object reference in flame graph",
+		Short: "[NEW] dump object reference in flame graph",
 		Args:  cobra.ExactArgs(1),
 		Run:   runObjref,
 	}
