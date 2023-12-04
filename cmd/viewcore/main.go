@@ -191,6 +191,7 @@ func init() {
 	cmdHTML.Flags().IntP("port", "p", 8080, "port for http server")
 
 	cmdHistogram.Flags().Int("top", 0, "reports only top N entries if N>0")
+	cmdHistogram.Flags().String("order", "", "sort order, only support ['size','count','total'], default total")
 
 	cmdObjref.Flags().Float64("minwidth", 0.01, "omit smaller objects (default 0.01 pixels)")
 	cmdObjref.Flags().Bool("printaddr", false, "print object addresses (default false)")
@@ -498,11 +499,13 @@ func runGoroutines(cmd *cobra.Command, args []string) {
 func runHistogram(cmd *cobra.Command, args []string) {
 	topN, err := cmd.Flags().GetInt("top")
 	if err != nil {
-		exitf("%v\n", err)
+		fmt.Printf("%v\n", err)
+		return
 	}
 	_, c, err := readCore()
 	if err != nil {
-		exitf("%v\n", err)
+		fmt.Printf("%v\n", err)
+		return
 	}
 	// Produce an object histogram (bytes per type).
 	type bucket struct {
@@ -529,22 +532,21 @@ func runHistogram(cmd *cobra.Command, args []string) {
 		total = total + b.count*b.size
 	}
 
-	if len(args) == 1 {
-		switch args[0] {
-		case "count":
-			sort.Slice(buckets, func(i, j int) bool {
-				return buckets[i].count > buckets[j].count
-			})
-		case "size":
-			sort.Slice(buckets, func(i, j int) bool {
-				return buckets[i].size > buckets[j].size
-			})
-		default:
-			sort.Slice(buckets, func(i, j int) bool {
-				return buckets[i].size*buckets[i].count > buckets[j].size*buckets[j].count
-			})
-		}
-	} else {
+	order, err := cmd.Flags().GetString("order")
+	if err != nil {
+		fmt.Printf("%v\n", err)
+		return
+	}
+	switch order {
+	case "count":
+		sort.Slice(buckets, func(i, j int) bool {
+			return buckets[i].count > buckets[j].count
+		})
+	case "size":
+		sort.Slice(buckets, func(i, j int) bool {
+			return buckets[i].size > buckets[j].size
+		})
+	default:
 		sort.Slice(buckets, func(i, j int) bool {
 			return buckets[i].size*buckets[i].count > buckets[j].size*buckets[j].count
 		})
