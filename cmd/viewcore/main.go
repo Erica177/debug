@@ -208,14 +208,14 @@ func init() {
 	cmdObjref.Flags().Float64("minwidth", 0.01, "omit smaller objects (default 0.01 pixels)")
 	cmdObjref.Flags().Bool("printaddr", false, "print object addresses (default false)")
 
-	cmdSearchObjects.Flags().Int("limit", 30, "page output, example, limit=20, only output 20 info each time, enter to"+
+	cmdSearchObjects.Flags().Int("limit", -1, "page output, example, limit=20, only output 20 info each time, enter to"+
 		"next page, esc exit. default 30")
-	cmdSearchObjects.Flags().Int("page", 0, "page num, default 0")
+	cmdSearchObjects.Flags().Int("page", -1, "page num, default 0")
 
 	cmdReachAll.Flags().String("key", "", "filter stack info search results by keywords")
-	cmdReachAll.Flags().Int("limit", 30, "page output, example, limit=20, only output 20 info each time, enter to"+
+	cmdReachAll.Flags().Int("limit", -1, "page output, example, limit=20, only output 20 info each time, enter to"+
 		"next page, esc exit. default 30")
-	cmdReachAll.Flags().Int("page", 0, "page num, default 0")
+	cmdReachAll.Flags().Int("page", -1, "page num, default 0")
 
 	cmdTopFunc.Flags().Int("top", 10, "reports only top N entries if N>0")
 
@@ -732,11 +732,17 @@ func runSearchObjectAddressByTypeName(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	start := min((page)*limit, len(allObjects))
-	end := min((page+1)*limit, len(allObjects))
-	result := allObjects[start:end]
-	for _, address := range result {
-		fmt.Printf("%x", address)
+	if limit != -1 && page != -1 {
+		start := min((page)*limit, len(allObjects))
+		end := min((page+1)*limit, len(allObjects))
+		result := allObjects[start:end]
+		for _, address := range result {
+			fmt.Printf("%x", address)
+		}
+	} else {
+		for _, address := range allObjects {
+			fmt.Printf("%x", address)
+		}
 	}
 }
 
@@ -776,10 +782,14 @@ func runReachAll(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	start := min((page)*limit, len(addrs))
-	end := min((page+1)*limit, len(addrs))
-	result := addrs[start:end]
-	outputReach(c, result, keywords)
+	if limit != -1 && page != -1 {
+		start := min((page)*limit, len(addrs))
+		end := min((page+1)*limit, len(addrs))
+		result := addrs[start:end]
+		outputReach(c, result, keywords)
+	} else {
+		outputReach(c, addrs, keywords)
+	}
 }
 
 func outputReach(c *gocore.Process, addrs []core.Address, keywords string) {
