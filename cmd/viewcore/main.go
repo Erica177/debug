@@ -192,9 +192,6 @@ func init() {
 	cmdRoot.PersistentFlags().StringVar(&cfg.exePath, "exe", "", "main executable file")
 	cmdRoot.PersistentFlags().StringVar(&cfg.cpuprof, "prof", "", "write cpu profile of viewcore to this file for viewcore's developers")
 
-	cmdSearchObjects.Flags().Int("len", 10, "max length of output info")
-	cmdReachAll.Flags().Int("len", 10, "max length of output info")
-	cmdReachAll.Flags().String("key", "", "filter stack info search results by keywords")
 	// subcommand flags
 	cmdHTML.Flags().IntP("port", "p", 8080, "port for http server")
 
@@ -203,6 +200,15 @@ func init() {
 
 	cmdObjref.Flags().Float64("minwidth", 0.01, "omit smaller objects (default 0.01 pixels)")
 	cmdObjref.Flags().Bool("printaddr", false, "print object addresses (default false)")
+
+	cmdSearchObjects.Flags().Int("limit", 30, "page output, example, limit=20, only output 20 info each time, enter to"+
+		"next page, esc exit. default 30")
+	cmdSearchObjects.Flags().Int("page", 0, "page num, default 0")
+
+	cmdReachAll.Flags().String("key", "", "filter stack info search results by keywords")
+	cmdReachAll.Flags().Int("limit", 30, "page output, example, limit=20, only output 20 info each time, enter to"+
+		"next page, esc exit. default 30")
+	cmdReachAll.Flags().Int("page", 0, "page num, default 0")
 
 	cmdTopFunc.Flags().Int("top", 10, "reports only top N entries if N>0")
 
@@ -698,32 +704,37 @@ func runSearchObjectAddressByTypeName(cmd *cobra.Command, args []string) {
 		return true
 	})
 
-	name := args[0]
-	outputLength, err := cmd.Flags().GetInt("len")
+	objectType := args[0]
+	limit, err := cmd.Flags().GetInt("limit")
 	if err != nil {
-		fmt.Printf("%v", err)
+		fmt.Printf("%v\n", err)
+		return
+	}
+	page, err := cmd.Flags().GetInt("page")
+	if err != nil {
+		fmt.Printf("%v\n", err)
 		return
 	}
 
-	fmt.Printf("Type\tAddresses, Top[%v]\n", outputLength)
-	numbersOfAllAddress := len(objMap[name])
-	if numbersOfAllAddress > outputLength {
-		var info []string
-		for _, address := range objMap[name][:outputLength] {
-			info = append(info, fmt.Sprintf("%x", address))
-		}
-		fmt.Printf("%s\t%v and more %v address...\n", name, info, numbersOfAllAddress-outputLength)
-	} else {
-		var address []string
-		for _, addr := range objMap[name] {
-			address = append(address, fmt.Sprintf("%x", addr))
-		}
-		fmt.Printf("%s\t%v\n", name, address)
+	allObjects, ok := objMap[objectType]
+	if !ok {
+		fmt.Printf("can not find address for object type %s", objectType)
+		return
 	}
 
+	start := min((page)*limit, len(allObjects))
+	end := min((page+1)*limit, len(allObjects))
+	result := allObjects[start:end]
+	for _, address := range result {
+		fmt.Printf("%x", address)
+	}
 }
 
 func runReachAll(cmd *cobra.Command, args []string) {
+	_, c, err := readCore()
+	if err != nil {
+		exitf("%v\n", err)
+	}
 	objectType := args[0]
 
 	keywords, err := cmd.Flags().GetString("key")
@@ -731,15 +742,16 @@ func runReachAll(cmd *cobra.Command, args []string) {
 		fmt.Printf("%v", err)
 		return
 	}
-	outputLength, err := cmd.Flags().GetInt("len")
+
+	limit, err := cmd.Flags().GetInt("limit")
 	if err != nil {
-		fmt.Printf("%v", err)
+		fmt.Printf("%v\n", err)
 		return
 	}
-
-	_, c, err := readCore()
+	page, err := cmd.Flags().GetInt("page")
 	if err != nil {
-		exitf("%v\n", err)
+		fmt.Printf("%v\n", err)
+		return
 	}
 
 	objMap := map[string][]core.Address{}
@@ -750,47 +762,40 @@ func runReachAll(cmd *cobra.Command, args []string) {
 
 	addrs, ok := objMap[objectType]
 	if !ok {
-		fmt.Printf("can not find address for object type %s", objectType)
+		fmt.Printf("can not find stack info for object type %s", objectType)
 		return
 	}
 
-	var allStack []string
-	if keywords == "" && len(addrs) > outputLength {
-		addrs = addrs[:outputLength]
-	}
+	start := min((page)*limit, len(addrs))
+	end := min((page+1)*limit, len(addrs))
+	result := addrs[start:end]
+	outputReach(c, result, keywords)
+}
 
+func outputReach(c *gocore.Process, addrs []core.Address, keywords string) {
+	var allStack []string
 	for _, addr := range addrs {
 		info := reachObjectsByAddress(c, addr)
 		if info != "" {
 			allStack = append(allStack, reachObjectsByAddress(c, addr))
 		}
 	}
-
-	fmt.Printf("All stack info of Object type %s, Top[%v]\n", objectType, outputLength)
-	if keywords == "" {
-		if len(allStack) > outputLength {
-			for _, info := range allStack[:outputLength] {
-				fmt.Printf("%s\n", info)
-			}
-		} else {
-			for _, info := range allStack {
-				fmt.Printf("%s\n", info)
-			}
-		}
-	} else {
+	if keywords != "" {
 		var filters []string
 		for _, info := range allStack {
 			if strings.Contains(info, keywords) {
 				filters = append(filters, info)
 			}
-			if len(filters) == outputLength {
-				break
-			}
 		}
 		for _, filter := range filters {
 			fmt.Printf("%s\n", filter)
 		}
+	} else {
+		for _, info := range allStack {
+			fmt.Printf("%s\n", info)
+		}
 	}
+	allStack = nil
 }
 
 func runReachable(cmd *cobra.Command, args []string) {
@@ -1078,7 +1083,7 @@ func reachObjectsByAddress(c *gocore.Process, address core.Address) string {
 	info := ""
 	for !done {
 		if len(q) == 0 {
-			continue
+			return ""
 		}
 		y := q[0]
 		q = q[1:]
