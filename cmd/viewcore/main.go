@@ -165,7 +165,7 @@ var (
 	}
 
 	cmdTopFunc = &cobra.Command{
-		Use: "topfunc",
+		Use: "topfunc <object_type>",
 		Short: "[NEW] output memory usage, classify and sort by function name. Prefix matching, not exact matching,\n" +
 			"it will take a long time if there are many objects",
 		Args: cobra.ExactArgs(1),
