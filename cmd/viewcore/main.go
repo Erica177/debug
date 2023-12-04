@@ -115,7 +115,7 @@ var (
 
 	cmdSearchObjects = &cobra.Command{
 		Use: "search <object_type>",
-		Short: "[NEW] search all address by objects type, and output top len[flags] address" +
+		Short: "[NEW] search all address by objects type, and output by page" +
 			fmt.Sprintf(", default length 10"),
 		Args: cobra.ExactArgs(1),
 		Run:  runSearchObjectAddressByTypeName,
@@ -136,11 +136,10 @@ var (
 	}
 
 	cmdReachAll = &cobra.Command{
-		Use: "reachall <object_type>",
-		Short: "[NEW] find path from root to an object all address, filter by key[flags]" +
-			fmt.Sprintf("and output top len[flags] stack info, default length 10"),
-		Args: cobra.ExactArgs(1),
-		Run:  runReachAll,
+		Use:   "reachall <object_type>",
+		Short: "[NEW] find path from root to an object all address, filter by key[flags] and output by page",
+		Args:  cobra.ExactArgs(1),
+		Run:   runReachAll,
 	}
 
 	cmdHTML = &cobra.Command{
