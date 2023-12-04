@@ -163,6 +163,14 @@ var (
 		Args:  cobra.ExactArgs(1),
 		Run:   runObjref,
 	}
+
+	cmdTopFunc = &cobra.Command{
+		Use: "topfunc",
+		Short: "[NEW] output memory usage, classify and sort by function name. Prefix matching, not exact matching,\n" +
+			"it will take a long time if there are many objects",
+		Args: cobra.ExactArgs(1),
+		Run:  runTopFunc,
+	}
 )
 
 type config struct {
@@ -196,6 +204,8 @@ func init() {
 	cmdObjref.Flags().Float64("minwidth", 0.01, "omit smaller objects (default 0.01 pixels)")
 	cmdObjref.Flags().Bool("printaddr", false, "print object addresses (default false)")
 
+	cmdTopFunc.Flags().Int("top", 10, "reports only top N entries if N>0")
+
 	cmdRoot.AddCommand(
 		cmdOverview,
 		cmdMappings,
@@ -209,7 +219,8 @@ func init() {
 		cmdRead,
 		cmdSearchObjects,
 		cmdReachAll,
-		cmdObjref)
+		cmdObjref,
+		cmdTopFunc)
 
 	// customize the usage template - viewcore's command structure
 	// is not typical of cobra-based command line tool.
@@ -745,10 +756,16 @@ func runReachAll(cmd *cobra.Command, args []string) {
 
 	var allStack []string
 	if keywords == "" && len(addrs) > outputLength {
-		allStack = reachObjectsByAddress(c, addrs[:outputLength])
-	} else {
-		allStack = reachObjectsByAddress(c, addrs)
+		addrs = addrs[:outputLength]
 	}
+
+	for _, addr := range addrs {
+		info := reachObjectsByAddress(c, addr)
+		if info != "" {
+			allStack = append(allStack, reachObjectsByAddress(c, addr))
+		}
+	}
+
 	fmt.Printf("All stack info of Object type %s, Top[%v]\n", objectType, outputLength)
 	if keywords == "" {
 		if len(allStack) > outputLength {
@@ -1040,86 +1057,81 @@ func exitf(format string, args ...interface{}) {
 	os.Exit(1)
 }
 
-func reachObjectsByAddress(c *gocore.Process, addr []core.Address) []string {
-	var allStackInfo []string
-
-	for _, address := range addr {
-		obj, _ := c.FindObject(address)
-		if obj == 0 {
-			fmt.Printf("can't find stack for address %x\n", address)
-			return nil
-		}
-
-		// Breadth-first search backwards until we reach a root.
-		type hop struct {
-			i int64         // offset in "from" object (the key in the path map) where the pointer is
-			x gocore.Object // the "to" object
-			j int64         // the offset in the "to" object
-		}
-		depth := map[gocore.Object]int{}
-		depth[obj] = 0
-		q := []gocore.Object{obj}
-		done := false
-
-		info := ""
-		for !done {
-			if len(q) == 0 {
-				continue
-			}
-			y := q[0]
-			q = q[1:]
-			c.ForEachReversePtr(y, func(x gocore.Object, r *gocore.Root, i, j int64) bool {
-				if r != nil {
-					// found it.
-					if r.Frame == nil {
-						// Print global
-						info = info + fmt.Sprintf("%s", r.Name)
-					} else {
-						// Print stack up to frame in question.
-						var frames []*gocore.Frame
-						for f := r.Frame.Parent(); f != nil; f = f.Parent() {
-							frames = append(frames, f)
-						}
-						for k := len(frames) - 1; k >= 0; k-- {
-							info = info + fmt.Sprintf("%s\n", frames[k].Func().Name())
-						}
-						// Print frame + variable in frame.
-						info = info + fmt.Sprintf("%s.%s", r.Frame.Func().Name(), r.Name)
-					}
-					info = info + fmt.Sprintf("%s → \n", typeFieldName(r.Type, i))
-
-					z := y
-					for {
-						info = info + fmt.Sprintf("%x %s", c.Addr(z), typeName(c, z))
-						if z == obj {
-							info = info + fmt.Sprintf("\n")
-							break
-						}
-						// Find an edge out of z which goes to an object
-						// closer to obj.
-						c.ForEachPtr(z, func(i int64, w gocore.Object, j int64) bool {
-							if d, ok := depth[w]; ok && d < depth[z] {
-								info = info + fmt.Sprintf(" %s → %s", objField(c, z, i), objRegion(c, w, j))
-								z = w
-								return false
-							}
-							return true
-						})
-						info = info + fmt.Sprintf("\n")
-					}
-					done = true
-					return false
-				}
-				if _, ok := depth[x]; ok {
-					// we already found a shorter path to this object.
-					return true
-				}
-				depth[x] = depth[y] + 1
-				q = append(q, x)
-				return true
-			})
-		}
-		allStackInfo = append(allStackInfo, info)
+func reachObjectsByAddress(c *gocore.Process, address core.Address) string {
+	obj, _ := c.FindObject(address)
+	if obj == 0 {
+		fmt.Printf("can't find stack for address %x\n", address)
+		return ""
 	}
-	return allStackInfo
+
+	// Breadth-first search backwards until we reach a root.
+	type hop struct {
+		i int64         // offset in "from" object (the key in the path map) where the pointer is
+		x gocore.Object // the "to" object
+		j int64         // the offset in the "to" object
+	}
+	depth := map[gocore.Object]int{}
+	depth[obj] = 0
+	q := []gocore.Object{obj}
+	done := false
+
+	info := ""
+	for !done {
+		if len(q) == 0 {
+			continue
+		}
+		y := q[0]
+		q = q[1:]
+		c.ForEachReversePtr(y, func(x gocore.Object, r *gocore.Root, i, j int64) bool {
+			if r != nil {
+				// found it.
+				if r.Frame == nil {
+					// Print global
+					info = info + fmt.Sprintf("%s", r.Name)
+				} else {
+					// Print stack up to frame in question.
+					var frames []*gocore.Frame
+					for f := r.Frame.Parent(); f != nil; f = f.Parent() {
+						frames = append(frames, f)
+					}
+					for k := len(frames) - 1; k >= 0; k-- {
+						info = info + fmt.Sprintf("%s\n", frames[k].Func().Name())
+					}
+					// Print frame + variable in frame.
+					info = info + fmt.Sprintf("%s.%s", r.Frame.Func().Name(), r.Name)
+				}
+				info = info + fmt.Sprintf("%s → \n", typeFieldName(r.Type, i))
+
+				z := y
+				for {
+					info = info + fmt.Sprintf("%x %s", c.Addr(z), typeName(c, z))
+					if z == obj {
+						info = info + fmt.Sprintf("\n")
+						break
+					}
+					// Find an edge out of z which goes to an object
+					// closer to obj.
+					c.ForEachPtr(z, func(i int64, w gocore.Object, j int64) bool {
+						if d, ok := depth[w]; ok && d < depth[z] {
+							info = info + fmt.Sprintf(" %s → %s", objField(c, z, i), objRegion(c, w, j))
+							z = w
+							return false
+						}
+						return true
+					})
+					info = info + fmt.Sprintf("\n")
+				}
+				done = true
+				return false
+			}
+			if _, ok := depth[x]; ok {
+				// we already found a shorter path to this object.
+				return true
+			}
+			depth[x] = depth[y] + 1
+			q = append(q, x)
+			return true
+		})
+	}
+	return info
 }

@@ -3,7 +3,9 @@ package main
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
+	"text/tabwriter"
 	"unicode"
 
 	"github.com/spf13/cobra"
@@ -123,6 +125,87 @@ func addGoroutines(node *ObjNode) {
 
 	// mark visited for root node
 	visitedNodes[n.addr] = true
+}
+
+func runTopFunc(cmd *cobra.Command, args []string) {
+	_, c, err := readCore()
+	if err != nil {
+		fmt.Printf("%v\n", err)
+		return
+	}
+
+	objectType := args[0]
+
+	topN, err := cmd.Flags().GetInt("top")
+	if err != nil {
+		fmt.Printf("%v\n", err)
+		return
+	}
+
+	type object2Addr struct {
+		Obj     gocore.Object
+		Address core.Address
+	}
+	objMap := map[string][]*object2Addr{}
+	c.ForEachObject(func(x gocore.Object) bool {
+		objMap[typeName(c, x)] = append(objMap[typeName(c, x)],
+			&object2Addr{
+				Obj:     x,
+				Address: c.Addr(x),
+			})
+		return true
+	})
+
+	type bucket struct {
+		Count int
+		Total int64
+		Info  string
+	}
+
+	var buckets []*bucket
+
+	info2Obj := map[string][]gocore.Object{}
+	for _, oa := range objMap[objectType] {
+		info := reachObjectsByAddress(c, oa.Address)
+		split := strings.Split(info, "→")
+		info2Obj[split[0]] = append(info2Obj[split[0]], oa.Obj)
+	}
+	for info, objs := range info2Obj {
+		var total int64
+		for _, obj := range objs {
+			total = total + c.Size(obj)
+		}
+		buckets = append(buckets, &bucket{
+			Count: len(objs),
+			Total: total,
+			Info:  info,
+		})
+	}
+	sort.Slice(buckets, func(i, j int) bool {
+		return buckets[i].Total > buckets[j].Total
+	})
+
+	fmt.Printf("Object type : [%s], function stack info\n", objectType)
+	// report only top N if requested
+	if topN > 0 && len(buckets) > topN {
+		buckets = buckets[:topN]
+	}
+
+	t := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.AlignRight)
+	_, _ = fmt.Fprintf(t, "%s\t%s\t %s\n", "Count", "Total", "Info")
+	for _, e := range buckets {
+		split := strings.Split(e.Info, "\n")
+		output := ""
+		for i, s := range split {
+			if i == 0 {
+				output = output + fmt.Sprintf("%d\t%s\t %s\n", e.Count, util.FormatBytes(e.Total), s)
+			} else {
+				output = output + fmt.Sprintf(" \t \t %s\n", s)
+			}
+		}
+		_, _ = fmt.Fprintf(t, "%s", output)
+	}
+	_ = t.Flush()
 }
 
 func runObjref(cmd *cobra.Command, args []string) {
