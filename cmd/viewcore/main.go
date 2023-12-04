@@ -204,6 +204,7 @@ func init() {
 
 	cmdHistogram.Flags().Int("top", 0, "reports only top N entries if N>0")
 	cmdHistogram.Flags().String("order", "", "sort order, only support ['size','count','total'], default total")
+	cmdHistogram.Flags().String("key", "", "filter result by keywords")
 
 	cmdObjref.Flags().Float64("minwidth", 0.01, "omit smaller objects (default 0.01 pixels)")
 	cmdObjref.Flags().Bool("printaddr", false, "print object addresses (default false)")
@@ -579,16 +580,29 @@ func runHistogram(cmd *cobra.Command, args []string) {
 		})
 	}
 
-	// report only top N if requested
-	if topN > 0 && len(buckets) > topN {
-		buckets = buckets[:topN]
+	key, err := cmd.Flags().GetString("key")
+	if err != nil {
+		fmt.Printf("%v\n", err)
+		return
 	}
 
 	fmt.Printf("Total heap memory usage : %s\n\n", util.FormatBytes(total))
 	t := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.AlignRight)
 	fmt.Fprintf(t, "%s\t%s\t%s\t %s\n", "Count", "Size", "Total", "ObjectType")
-	for _, e := range buckets {
-		fmt.Fprintf(t, "%d\t%s\t%s\t %s\n", e.count, util.FormatBytes(e.size), util.FormatBytes(e.count*e.size), e.name)
+	if key != "" {
+		for _, e := range buckets {
+			if strings.Contains(e.name, key) {
+				fmt.Fprintf(t, "%d\t%s\t%s\t %s\n", e.count, util.FormatBytes(e.size), util.FormatBytes(e.count*e.size), e.name)
+			}
+		}
+	} else {
+		// report only top N if requested
+		if topN > 0 && len(buckets) > topN {
+			buckets = buckets[:topN]
+		}
+		for _, e := range buckets {
+			fmt.Fprintf(t, "%d\t%s\t%s\t %s\n", e.count, util.FormatBytes(e.size), util.FormatBytes(e.count*e.size), e.name)
+		}
 	}
 	t.Flush()
 }
