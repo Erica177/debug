@@ -170,6 +170,14 @@ var (
 		Args: cobra.ExactArgs(1),
 		Run:  runTopFunc,
 	}
+
+	cmdUnkName = &cobra.Command{
+		Use: "unk",
+		Short: "[NEW] input memory usage, output unk type name, example:\n" +
+			"input: unk --size=1Kb, output: unk1024",
+		Args: cobra.ExactArgs(0),
+		Run:  runUnkName,
+	}
 )
 
 type config struct {
@@ -211,6 +219,8 @@ func init() {
 
 	cmdTopFunc.Flags().Int("top", 10, "reports only top N entries if N>0")
 
+	cmdUnkName.Flags().String("size", "", "object size, support B, KB, MB, GB, default B")
+
 	cmdRoot.AddCommand(
 		cmdOverview,
 		cmdMappings,
@@ -225,7 +235,8 @@ func init() {
 		cmdSearchObjects,
 		cmdReachAll,
 		cmdObjref,
-		cmdTopFunc)
+		cmdTopFunc,
+		cmdUnkName)
 
 	// customize the usage template - viewcore's command structure
 	// is not typical of cobra-based command line tool.
@@ -1138,4 +1149,14 @@ func reachObjectsByAddress(c *gocore.Process, address core.Address) string {
 		})
 	}
 	return info
+}
+
+func runUnkName(cmd *cobra.Command, args []string) {
+	size, err := cmd.Flags().GetString("size")
+	if err != nil {
+		fmt.Printf("%v\n", err)
+		return
+	}
+	byteSize, err := util.ParseByteSize(size)
+	fmt.Printf("UnkName : unk%d", float64(byteSize))
 }
